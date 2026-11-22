@@ -1,5 +1,5 @@
 <?php
-// Execute somente por CLI. As respostas HTTP e os dados de pedidos são fictícios.
+// Run from the CLI. HTTP responses and orders are test fixtures.
 if (PHP_SAPI !== 'cli') { exit; }
 define('ABSPATH', __DIR__);
 define('WCMT_URL', 'https://example.invalid');
@@ -8,15 +8,15 @@ define('WCMT_PASSWORD', 'fixture');
 function add_action(...$args) {}
 function add_filter(...$args) {}
 function sanitize_text_field($v) { return strip_tags($v); }
-function get_post_meta($id, $key, $single) { return $id === 1 ? 'Curso, Curso, -remover' : ''; }
-function get_option($key, $default) { return $key === 'wcmt_store' ? 'Loja A' : $default; }
+function get_post_meta($id, $key, $single) { return $id === 1 ? 'Course, Course, -remove' : ''; }
+function get_option($key, $default) { return $key === 'wcmt_store' ? 'Store A' : ($GLOBALS['annual_pattern'] ?? $default); }
 function wp_timezone() { return new DateTimeZone('America/Sao_Paulo'); }
 function wp_date($format, $ts, $tz) { return (new DateTimeImmutable('@' . $ts))->setTimezone($tz)->format($format); }
 function wp_parse_url($url, $part) { return parse_url($url, $part); }
 function wp_json_encode($obj) { return json_encode($obj); }
 function wp_safe_remote_request($url, $opts) {
     $GLOBALS['calls'][] = [$url, $opts];
-    if (!$GLOBALS['responses']) { throw new LogicException('Chamada HTTP inesperada'); }
+    if (!$GLOBALS['responses']) { throw new LogicException('Unexpected HTTP call'); }
     return array_shift($GLOBALS['responses']);
 }
 function is_wp_error($r) { return false; }
@@ -40,39 +40,42 @@ $order = new class {
     function get_meta($k) { return $this->meta[$k] ?? ''; }
     function update_meta_data($k, $v) { $this->meta[$k] = $v; }
     function save_meta_data() {}
-    function get_billing_email() { return 'cliente@example.invalid'; }
+    function get_billing_email() { return 'customer@example.invalid'; }
     function add_order_note($n) { $this->notes[] = $n; }
 };
-$tags = ['Curso', 'Compradores 2026', 'Loja A'];
-check(PurchaseTags\purchase_tags($order) === $tags, 'fuso da loja, tags únicas e proteção contra remoção');
+$tags = ['Course', 'Buyers 2026', 'Store A'];
+check(PurchaseTags\purchase_tags($order) === $tags, 'store time zone, unique tags, and tag removal prevention');
+$annual_pattern = 'Members {ano}';
+check(in_array('Members 2026', PurchaseTags\purchase_tags($order), true), 'saved legacy year pattern still works');
+unset($annual_pattern);
 $order->mapped = false;
 PurchaseTags\enqueue_order(10);
-check(empty($queue), 'pedido sem mapeamento fora da fila');
+check(empty($queue), 'unmapped orders stay out of the queue');
 $order->mapped = true;
 $order->paid = false;
 PurchaseTags\enqueue_order(10);
-check(empty($queue), 'pedido não pago fora da fila');
+check(empty($queue), 'unpaid orders stay out of the queue');
 $order->paid = true;
 PurchaseTags\enqueue_order(10);
-check(count($queue) === 1 && $order->get_meta(PurchaseTags\SNAPSHOT) === $tags, 'fila e tags congeladas');
+check(count($queue) === 1 && $order->get_meta(PurchaseTags\SNAPSHOT) === $tags, 'queued order has a tag snapshot');
 $responses = [[503, []]];
 PurchaseTags\run_job(10);
-check(count($retry) === 1 && !$order->get_meta(PurchaseTags\DONE), 'falha temporária reagendada');
+check(count($retry) === 1 && !$order->get_meta(PurchaseTags\DONE), 'transient failure schedules a retry');
 $contact = ['id'=>9, 'fields'=>['all'=>['email'=>$order->get_billing_email()]]];
 $responses = [[200, ['total'=>1, 'contacts'=>[$contact]]], [200, ['contact'=>['id'=>9]]]];
 PurchaseTags\run_job(10, 2);
 $last = end($calls);
-check($last[1]['method'] === 'PATCH' && json_decode($last[1]['body'], true) === ['tags'=>$tags], 'contato existente recebe apenas acréscimos');
+check($last[1]['method'] === 'PATCH' && json_decode($last[1]['body'], true) === ['tags'=>$tags], 'existing contact receives only tag additions');
 $count = count($calls);
 PurchaseTags\run_job(10);
-check(count($calls) === $count, 'pedido confirmado ignora repetição');
+check(count($calls) === $count, 'confirmed order skips duplicate delivery');
 $responses = [[200, ['total'=>0, 'contacts'=>[]]], [201, ['contact'=>['id'=>10]]]];
 PurchaseTags\send_tags($order->get_billing_email(), $tags);
-check(end($calls)[1]['method'] === 'POST', 'novo contato criado');
+check(end($calls)[1]['method'] === 'POST', 'new contact created');
 $responses = [[200, ['total'=>2, 'contacts'=>[$contact, $contact]]]];
 try {
     PurchaseTags\send_tags($order->get_billing_email(), $tags);
-    throw new LogicException('Duplicidade deveria interromper');
+    throw new LogicException('Duplicate email should stop the sync');
 } catch (RuntimeException $e) {
-    check(strpos($e->getMessage(), 'duplicados') !== false, 'duplicidade exige revisão');
+    check(strpos($e->getMessage(), 'Multiple contacts') !== false, 'duplicate email requires review');
 }
