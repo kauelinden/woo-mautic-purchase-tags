@@ -1,0 +1,11 @@
+name: Testes do plugin
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  teste:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: php -l woo-mautic-purchase-tags.php
+      - run: php tests/test.php
