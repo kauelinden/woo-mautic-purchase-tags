@@ -1,9 +1,9 @@
-name: Testes do plugin
+name: Plugin tests
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
-  teste:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
