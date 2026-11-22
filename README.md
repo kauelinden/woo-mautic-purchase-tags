@@ -1,208 +1,45 @@
-<?php
-/**
- * Plugin Name: Purchase Tags for WooCommerce and Mautic
- * Description: Apply Mautic tags when a customer buys a mapped WooCommerce product.
- * Version: 0.1.0
- * Requires PHP: 7.4
- * Requires Plugins: woocommerce
- * License: GPL-2.0-or-later
- */
+# Purchase Tags for WooCommerce and Mautic
 
-namespace PurchaseTags;
+Assign Mautic tags to individual WooCommerce products. When a customer pays for an order containing a mapped product, the plugin adds the product tags, the store tag, and a payment-year tag to their Mautic contact. Customers can accumulate tags across stores that share a Mautic instance.
 
-defined('ABSPATH') || exit;
+## Installation
 
-const JOB = 'wc_mautic_purchase_sync';
-const GROUP = 'wc-mautic-purchase-tags';
-const PRODUCT_KEY = '_wc_mautic_purchase_tags';
-const SNAPSHOT = '_wc_mautic_purchase_snapshot';
-const DONE = '_wc_mautic_purchase_done';
+1. Activate WooCommerce on a site running WordPress 5.3 or later and PHP 7.4 or later. Download the ZIP from **Code → Download ZIP** in this repository. In WordPress, select **Plugins → Add Plugin → Upload Plugin**, upload the ZIP, and activate the plugin.
+2. Enable the REST API and HTTP Basic authentication in Mautic. Use a dedicated account with permission to view, create, and edit contacts. Configure email as a unique contact identifier, particularly if multiple stores share the instance.
+3. Set the following environment variables on the server, then add these definitions to wp-config.php before the final configuration line. WCMT_URL is the HTTPS URL of the Mautic installation, without the /api suffix. Each store can use its own credentials.
 
-function clean_tags($values) {
-    $result = [];
-    foreach ($values as $value) {
-        $tag = trim(sanitize_text_field($value));
-        // Mautic treats a leading hyphen as a request to remove a tag.
-        if ($tag !== '' && $tag[0] !== '-') {
-            $result[] = $tag;
-        }
-    }
-    return array_values(array_unique($result));
-}
+```php
+define('WCMT_URL', getenv('WCMT_URL') ?: '');
+define('WCMT_USER', getenv('WCMT_USER') ?: '');
+define('WCMT_PASSWORD', getenv('WCMT_PASSWORD') ?: '');
+```
 
-function purchase_tags($order) {
-    $tags = [];
-    foreach ($order->get_items() as $item) {
-        $mapped = get_post_meta($item->get_product_id(), PRODUCT_KEY, true);
-        $tags = array_merge($tags, explode(',', (string) $mapped));
-    }
-    $tags = clean_tags($tags);
-    $paid = $order->get_date_paid();
-    if (!$tags || !$paid) {
-        return [];
-    }
-    $year = wp_date('Y', $paid->getTimestamp(), wp_timezone());
-    $tags[] = str_replace(['{year}', '{ano}'], $year, get_option('wcmt_year', 'Buyers {year}'));
-    $tags[] = get_option('wcmt_store', '');
-    return clean_tags($tags);
-}
+## Configure tags
 
-add_action('before_woocommerce_init', function () {
-    if (class_exists('Automattic\WooCommerce\Utilities\FeaturesUtil')) {
-        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
-    }
-});
+Under **Settings → Purchase Tags**, enter a store tag such as **Store - Example** and an annual tag pattern such as **Buyers {year}**. Leave either field blank to omit that tag. Existing saved patterns using `{ano}` are also supported.
 
-add_action('woocommerce_product_options_general_product_data', function () {
-    woocommerce_wp_text_input([
-        'id' => PRODUCT_KEY, 'label' => 'Mautic tags',
-        'desc_tip' => true,
-        'description' => 'Separate tags with commas. Leave blank to skip this product. Variations inherit the parent product’s tags.',
-    ]);
-});
+In the classic product editor, open **Product data → General → Mautic tags**. Enter one or more comma-separated names, such as **Product - Photography Course, Interest - Photography**, and update the product. Variations inherit the parent product’s tags. Orders containing only unmapped products are skipped.
 
-add_action('woocommerce_admin_process_product_object', function ($product) {
-    if (current_user_can('edit_post', $product->get_id()) && isset($_POST[PRODUCT_KEY]) && is_string($_POST[PRODUCT_KEY])) {
-        $tags = clean_tags(explode(',', wp_unslash($_POST[PRODUCT_KEY])));
-        $product->update_meta_data(PRODUCT_KEY, implode(', ', $tags));
-    }
-});
+## Try a purchase in staging
 
-add_action('admin_init', function () {
-    foreach (['wcmt_store', 'wcmt_year'] as $option) {
-        register_setting('wcmt', $option, ['sanitize_callback' => 'sanitize_text_field']);
-    }
-});
+Map a product to **Product - Photography**, set the store tag to **Store - Example**, and place a paid order using a test contact. For a payment made in 2026, look for **Product - Photography**, **Store - Example**, and **Buyers 2026** in Mautic. Repeat with an existing contact and check that their earlier tags are still present.
 
-add_action('admin_menu', function () {
-    add_options_page('Purchase Tags', 'Purchase Tags', 'manage_options', 'wcmt', function () {
-        ?>
-        <div class="wrap"><h1>Mautic purchase tags</h1>
-        <p>Under Products, open a product and enter its Mautic tags on the General tab.
-        See the README for instructions on setting WCMT_URL, WCMT_USER, and WCMT_PASSWORD.</p>
-        <form method="post" action="options.php"><?php settings_fields('wcmt'); ?>
-        <p><label>Store tag <input name="wcmt_store" value="<?php echo esc_attr(get_option('wcmt_store', '')); ?>" placeholder="Store - Example"></label></p>
-        <p><label>Annual tag <input name="wcmt_year" value="<?php echo esc_attr(get_option('wcmt_year', 'Buyers {year}')); ?>"></label></p>
-        <p>Use {year} for the payment year. Leave a field blank to skip that tag.</p>
-        <?php submit_button(); ?></form></div>
-        <?php
-    });
-});
+The annual tag uses the payment date in the store’s time zone. A paid renewal order that includes a mapped product also earns the tag for its payment year. A later refund leaves the purchase history in place. Track subscription status and marketing consent separately.
 
-function enqueue_order($id) {
-    $order = wc_get_order($id);
-    if (!$order || !$order->is_paid() || $order->get_meta(DONE) || !function_exists('as_enqueue_async_action')) {
-        return;
-    }
-    if (!$order->get_meta(SNAPSHOT)) {
-        $tags = purchase_tags($order);
-        if (!$tags) {
-            return;
-        }
-        $order->update_meta_data(SNAPSHOT, $tags);
-        $order->save_meta_data();
-    }
-    as_enqueue_async_action(JOB, [(int) $id, 1], GROUP, true);
-}
+## Queue and troubleshooting
 
-foreach (['payment_complete', 'order_status_processing', 'order_status_completed'] as $event) {
-    add_action('woocommerce_' . $event, __NAMESPACE__ . '\\enqueue_order', 20);
-}
+WooCommerce processes requests in the background with Action Scheduler. Keep the store’s queue runner active. To inspect queued work, go to **WooCommerce → Status → Scheduled Actions** and look for the **wc-mautic-purchase-tags** group. The plugin saves a snapshot of the calculated tags on the order and adds a private order note when Mautic confirms the sync.
 
-function api($path, $method = 'GET', $payload = null) {
-    if (!defined('WCMT_URL') || !defined('WCMT_USER') || !defined('WCMT_PASSWORD') ||
-        !WCMT_USER || !WCMT_PASSWORD || wp_parse_url(WCMT_URL, PHP_URL_SCHEME) !== 'https') {
-        throw new \RuntimeException('Check the HTTPS connection settings.');
-    }
-    $options = [
-        'method' => $method, 'timeout' => 20, 'redirection' => 0,
-        'headers' => [
-            'Authorization' => 'Basic ' . base64_encode(WCMT_USER . ':' . WCMT_PASSWORD),
-            'Accept' => 'application/json',
-        ],
-    ];
-    if ($payload !== null) {
-        $options['headers']['Content-Type'] = 'application/json';
-        $options['body'] = wp_json_encode($payload);
-    }
-    $response = wp_safe_remote_request(rtrim(WCMT_URL, '/') . '/api/' . $path, $options);
-    if (is_wp_error($response)) {
-        throw new \RuntimeException('Could not reach Mautic.', 503);
-    }
-    $status = wp_remote_retrieve_response_code($response);
-    if ($status < 200 || $status >= 300) {
-        throw new \RuntimeException('HTTP response ' . $status, $status);
-    }
-    $body = json_decode(wp_remote_retrieve_body($response), true);
-    if (!is_array($body) || !empty($body['errors'])) {
-        throw new \RuntimeException('Unexpected response from Mautic.');
-    }
-    return $body;
-}
+Network failures and HTTP 408, 429, and 5xx responses can trigger up to four retries after 1, 5, 30, and 120 minutes. If synchronization stops, read the order note, correct the connection or contact details, and select **Mautic: retry pending purchase tags** from the order actions. Confirmed orders are skipped. If two contacts have the same email address, resolve the duplicate in Mautic before retrying.
 
-function send_tags($email, $tags) {
-    $query = http_build_query(['search' => 'email:' . $email, 'limit' => 100], '', '&', PHP_QUERY_RFC3986);
-    $list = api('contacts?' . $query);
-    if (!isset($list['contacts'], $list['total']) || !is_array($list['contacts']) || $list['total'] > count($list['contacts'])) {
-        throw new \RuntimeException('Incomplete search results. Check the contacts in Mautic.');
-    }
-    $ids = [];
-    foreach ($list['contacts'] as $contact) {
-        $address = $contact['fields']['all']['email'] ?? $contact['fields']['core']['email']['value'] ?? null;
-        if (!is_string($address)) {
-            throw new \RuntimeException('The API did not return an email address for verification.');
-        }
-        if (strcasecmp($address, $email) === 0) {
-            if (empty($contact['id'])) {
-                throw new \RuntimeException('Contact ID is missing.');
-            }
-            $ids[] = (int) $contact['id'];
-        }
-    }
-    if (count($ids) > 1) {
-        throw new \RuntimeException('Multiple contacts have this email address.');
-    }
-    $saved = $ids
-        ? api('contacts/' . $ids[0] . '/edit', 'PATCH', ['tags' => $tags])
-        : api('contacts/new', 'POST', ['email' => $email, 'tags' => $tags]);
-    if (empty($saved['contact']['id'])) {
-        throw new \RuntimeException('Mautic did not confirm the contact ID.');
-    }
-}
+The plugin sends the billing email to identify the contact and tag names to record the purchase. Restrict system access and choose tag names appropriate for your store. When replacing an existing integration, validate one product in staging before retiring the previous workflow.
 
-function run_job($id, $attempt = 1) {
-    $order = wc_get_order($id);
-    if (!$order || !$order->is_paid() || $order->get_meta(DONE)) {
-        return;
-    }
-    $tags = $order->get_meta(SNAPSHOT);
-    $email = $order->get_billing_email();
-    if (!$tags || !is_email($email)) {
-        $order->add_order_note('Mautic: check the billing email and product tags before retrying.');
-        return;
-    }
-    try {
-        send_tags($email, $tags);
-    } catch (\RuntimeException $error) {
-        $delays = [1 => 60, 2 => 300, 3 => 1800, 4 => 7200];
-        $code = $error->getCode();
-        if (isset($delays[$attempt]) && ($code >= 500 || in_array($code, [408, 429], true))) {
-            as_schedule_single_action(time() + $delays[$attempt], JOB, [(int) $id, $attempt + 1], GROUP, true);
-        } else {
-            $order->add_order_note('Mautic: sync pending. ' . $error->getMessage());
-        }
-        return;
-    }
-    $order->update_meta_data(DONE, 'yes');
-    $order->save_meta_data();
-    $order->add_order_note('Mautic: purchase tags synced.');
-}
+## Development
 
-add_action(JOB, __NAMESPACE__ . '\\run_job', 10, 2);
-add_filter('woocommerce_order_actions', function ($actions) {
-    $actions['wcmt_retry'] = 'Mautic: retry pending purchase tags';
-    return $actions;
-});
-add_action('woocommerce_order_action_wcmt_retry', function ($order) {
-    enqueue_order($order->get_id());
-});
+Run `php -l woo-mautic-purchase-tags.php` and `php tests/test.php`. The tests use synthetic orders and HTTP responses. Validate checkout, scheduled actions, and API compatibility against your own staging installation.
+
+When reporting an issue or submitting a pull request, use synthetic examples.
+
+## License
+
+GPL-2.0-or-later. See LICENSE.
