@@ -16,6 +16,10 @@ define('WCMT_USER', getenv('WCMT_USER') ?: '');
 define('WCMT_PASSWORD', getenv('WCMT_PASSWORD') ?: '');
 ```
 
+## Product mappings
+
+Open **Settings → Purchase Tags**. Select a product on the left and use **Link tag** next to a Mautic tag on the right. Both lists support search and pagination. **Product mapping** shows the current associations. **Unlink** removes the association for future orders. **Create a new tag** creates it in Mautic, then shows it in the catalog so you can link it. The API user needs permission to view and create tags. Variations use their parent product’s mappings.
+
 ## Configure tags
 
 Under **Settings → Purchase Tags**, enter a store tag such as **Store - Example** and an annual tag pattern such as **Buyers {year}**. Leave either field blank to omit that tag. Existing saved patterns using `{ano}` are also supported.
