@@ -95,3 +95,12 @@ try {
 } catch (RuntimeException $e) {
     check(strpos($e->getMessage(), 'Multiple contacts') !== false, 'duplicate email requires review');
 }
+
+check(PurchaseTags\mapping_tag(' Course ') === 'Course', 'valid mapping name');
+foreach (['-Remove', 'First,Second', ''] as $invalid) {
+    try { PurchaseTags\mapping_tag($invalid); throw new LogicException('Expected rejection'); }
+    catch (RuntimeException $e) { check(true, 'invalid mapping name rejected'); }
+}
+$responses = [[200, ['total'=>21, 'tags'=>[25=>['id'=>25,'tag'=>'Course']]]]];
+$list = PurchaseTags\catalog_tags('Course', 2);
+check($list['tags'][25]['tag'] === 'Course' && strpos(end($calls)[0], 'start=20') !== false, 'tag catalog pages');
