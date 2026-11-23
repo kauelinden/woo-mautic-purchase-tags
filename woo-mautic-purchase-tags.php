@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Purchase Tags for WooCommerce and Mautic
  * Description: Apply Mautic tags when a customer buys a mapped WooCommerce product.
- * Version: 0.3.2
+ * Version: 0.4.0
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
  * License: GPL-2.0-or-later
@@ -39,11 +39,17 @@ function purchase_tags($order) {
         $tags = array_merge($tags, explode(',', (string) $mapped));
     }
     $tags = clean_tags($tags);
-    $paid = $order->get_date_paid();
-    if (!$tags || !$paid) {
+    $rule = get_option('wcmt_every_purchase', []);
+    $global = !empty($rule['enabled']) ? clean_tags([$rule['tag'] ?? '']) : [];
+    if (!$order->is_paid()) {
         return [];
     }
+    $paid = $order->get_date_paid();
+    if (!$tags || !$paid) {
+        return $global;
+    }
     $year = wp_date('Y', $paid->getTimestamp(), wp_timezone());
+    $tags = array_merge($tags, $global);
     $tags[] = str_replace(['{year}', '{ano}'], $year, get_option('wcmt_year', 'Buyers {year}'));
     $tags[] = get_option('wcmt_store', '');
     return clean_tags($tags);
