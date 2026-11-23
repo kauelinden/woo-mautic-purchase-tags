@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Purchase Tags for WooCommerce and Mautic
  * Description: Apply Mautic tags when a customer buys a mapped WooCommerce product.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
  * License: GPL-2.0-or-later
@@ -17,6 +17,8 @@ const GROUP = 'wc-mautic-purchase-tags';
 const PRODUCT_KEY = '_wc_mautic_purchase_tags';
 const SNAPSHOT = '_wc_mautic_purchase_snapshot';
 const DONE = '_wc_mautic_purchase_done';
+
+require_once __DIR__ . '/product-mappings.php';
 
 function clean_tags($values) {
     $result = [];
@@ -156,8 +158,7 @@ add_action('admin_menu', function () {
     add_options_page('Purchase Tags', 'Purchase Tags', 'manage_options', 'wcmt', function () {
         ?>
         <div class="wrap"><h1>Mautic purchase tags</h1>
-        <p>Under Products, open a product and enter its Mautic tags on the General tab.
-        </p>
+        <?php if (function_exists('wc_get_product')) { mapping_panel(); } ?>
         <?php connection_form(); ?>
         <form method="post" action="options.php"><?php settings_fields('wcmt'); ?>
         <p><label>Store tag <input name="wcmt_store" value="<?php echo esc_attr(get_option('wcmt_store', '')); ?>" placeholder="Store - Example"></label></p>
