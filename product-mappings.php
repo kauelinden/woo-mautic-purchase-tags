@@ -21,9 +21,9 @@ function catalog_batch($start, $limit) {
     return $response;
 }
 
-function catalog_tags($search, $page) {
+function catalog_tags($search, $page, $all = false) {
     $offset = (max(1, $page) - 1) * 20;
-    if ($search === '') {
+    if (!$all && $search === '') {
         return catalog_batch($offset, 20);
     }
     // Some Mautic installations ignore the search parameter on the tags endpoint.
@@ -39,8 +39,8 @@ function catalog_tags($search, $page) {
                 throw new \RuntimeException('Mautic returned an inconsistent tag catalog. Please retry.');
             }
             $last_id = $id;
-            if (stripos($tag['tag'], $search) !== false) {
-                if ($total_matches >= $offset && count($matches) < 20) {
+            if ($all || stripos($tag['tag'], $search) !== false) {
+                if ($all || ($total_matches >= $offset && count($matches) < 20)) {
                     $matches[$id] = $tag;
                 }
                 ++$total_matches;
@@ -53,7 +53,7 @@ function catalog_tags($search, $page) {
 
 function mapping_url($changes = []) {
     $args = ['page' => 'wcmt'];
-    foreach (['product', 'products_page', 'tags_page'] as $key) {
+    foreach (['product', 'products_page', 'tags_page', 'products_all', 'tags_all'] as $key) {
         $args[$key] = absint($_GET[$key] ?? 0);
     }
     foreach (['products_search', 'tags_search'] as $key) {
@@ -79,7 +79,7 @@ function mapping_action() {
             if (empty($created['tag']['id'])) {
                 throw new \RuntimeException('Mautic did not confirm creation. Search the catalog before retrying.');
             }
-            $next = ['tags_search' => $name, 'tags_page' => 1];
+            $next = ['tags_search' => $name, 'tags_page' => 1, 'tags_all' => 0];
             $message = 'Tag created in Mautic.';
         } else {
             $id = absint($_GET['product'] ?? 0);
@@ -120,15 +120,16 @@ add_action('admin_init', __NAMESPACE__ . '\\mapping_action');
 
 function mapping_search($key, $label) {
     $params = [];
-    parse_str(wp_parse_url(mapping_url([$key . '_page' => 1]), PHP_URL_QUERY), $params);
+    parse_str(wp_parse_url(mapping_url([$key . '_page' => 1, $key . '_all' => 0]), PHP_URL_QUERY), $params);
     $field = $key . '_search';
     ?>
     <form method="get" class="wcmt-search">
     <?php foreach ($params as $k => $v) : if ($k === $field) { continue; } ?>
       <input type="hidden" name="<?php echo esc_attr($k); ?>" value="<?php echo esc_attr($v); ?>">
     <?php endforeach; ?>
-      <input type="search" aria-label="<?php echo esc_attr($label); ?>" placeholder="<?php echo esc_attr($label); ?>" name="<?php echo esc_attr($field); ?>" value="<?php echo esc_attr($params[$field]); ?>">
+      <input type="search" aria-label="<?php echo esc_attr($label); ?>" placeholder="<?php echo esc_attr($label); ?>" name="<?php echo esc_attr($field); ?>" value="<?php echo esc_attr($params[$field] ?? ''); ?>">
       <button class="button">Search</button>
+      <a class="button" href="<?php echo esc_url(mapping_url([$key . '_all' => 1, $field => '', $key . '_page' => 1])); ?>"><?php echo $key === 'products' ? 'Load all products' : 'Load all tags'; ?></a>
     </form>
     <?php
 }
@@ -157,14 +158,16 @@ function mapping_panel() {
     $product = $id && get_post_type($id) === 'product' && current_user_can('edit_post', $id) ? wc_get_product($id) : false;
     $pp = max(1, absint($_GET['products_page'] ?? 1));
     $tp = max(1, absint($_GET['tags_page'] ?? 1));
+    $all_products = ($_GET['products_all'] ?? '') === '1';
+    $all_tags = ($_GET['tags_all'] ?? '') === '1';
     $products = new \WP_Query([
         'post_type' => 'product', 'post_status' => ['publish','draft','private','pending','future'],
-        'posts_per_page' => 20, 'paged' => $pp, 's' => sanitize_text_field(wp_unslash($_GET['products_search'] ?? '')),
+        'posts_per_page' => $all_products ? -1 : 20, 'paged' => $all_products ? 1 : $pp, 's' => $all_products ? '' : sanitize_text_field(wp_unslash($_GET['products_search'] ?? '')),
         'orderby' => ['title' => 'ASC', 'ID' => 'ASC'],
     ]);
     ?>
     <style>
-    .wcmt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;max-width:1050px}.wcmt-card{background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:16px 20px;margin:12px 0}.wcmt-card h2{margin-top:0}.wcmt-card ul{max-height:19rem;overflow:auto;margin:10px 0}.wcmt-card li{padding:6px 2px;border-bottom:1px solid #eee}.wcmt-card a[aria-current=true]{font-weight:bold}.wcmt-search,.wcmt-row{display:flex;gap:8px;align-items:center}.wcmt-search input{min-width:0;flex:1}.wcmt-row{justify-content:space-between}.wcmt-map{max-width:1008px}.wcmt-pager{margin-bottom:0}@media(max-width:760px){.wcmt-grid{grid-template-columns:1fr;gap:0}}
+    .wcmt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;max-width:1050px}.wcmt-card{background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:16px 20px;margin:12px 0}.wcmt-card h2{margin-top:0}.wcmt-card ul{max-height:19rem;overflow:auto;margin:10px 0}.wcmt-card li{padding:6px 2px;border-bottom:1px solid #eee}.wcmt-card a[aria-current=true]{font-weight:bold}.wcmt-search,.wcmt-row{display:flex;gap:8px;align-items:center}.wcmt-search{flex-wrap:wrap}.wcmt-search input{min-width:0;flex:1}.wcmt-row{justify-content:space-between}.wcmt-map{max-width:1008px}.wcmt-pager{margin-bottom:0}@media(max-width:760px){.wcmt-grid{grid-template-columns:1fr;gap:0}}
     </style>
     <div class="wcmt-grid"><section class="wcmt-card"><h2>WooCommerce products</h2>
     <?php mapping_search('products', 'Find a product'); ?>
@@ -177,7 +180,7 @@ function mapping_panel() {
     <form method="post"><?php wp_nonce_field('wcmt_mapping'); ?>
     <input type="hidden" name="wcmt_mapping_action" value="link">
     <?php try {
-        $catalog = catalog_tags(sanitize_text_field(wp_unslash($_GET['tags_search'] ?? '')), $tp);
+        $catalog = catalog_tags(sanitize_text_field(wp_unslash($_GET['tags_search'] ?? '')), $tp, $all_tags);
         echo '<ul>';
         foreach ($catalog['tags'] as $t) {
             if (!isset($t['id'], $t['tag'])) { continue; }
@@ -189,7 +192,9 @@ function mapping_panel() {
         }
         echo '</ul>';
         if (!$catalog['tags']) { echo '<p>No matching tags.</p>'; }
-        mapping_pages('tags_page', $tp, ceil($catalog['total'] / 20));
+        if (!$all_tags) {
+            mapping_pages('tags_page', $tp, ceil($catalog['total'] / 20));
+        }
     } catch (\RuntimeException $e) {
         echo '<p role="alert">' . esc_html($e->getMessage()) . ' Check the connection and tag permissions.</p>';
     } ?>
