@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Purchase Tags for WooCommerce and Mautic
  * Description: Apply Mautic tags when a customer buys a mapped WooCommerce product.
- * Version: 0.3.1
+ * Version: 0.3.2
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
  * License: GPL-2.0-or-later
