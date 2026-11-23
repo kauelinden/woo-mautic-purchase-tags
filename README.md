@@ -20,11 +20,15 @@ define('WCMT_PASSWORD', getenv('WCMT_PASSWORD') ?: '');
 
 Open **Settings → Purchase Tags**. Select a product on the left and use **Link tag** next to a Mautic tag on the right. Both lists support search and pagination. **Product mapping** shows the current associations. **Unlink** removes the association for future orders. **Create a new tag** creates it in Mautic, then shows it in the catalog so you can link it. The API user needs permission to view and create tags. Variations use their parent product’s mappings.
 
+## Every paid purchase
+
+To add one Mautic tag to all new paid orders, open **Settings → Purchase Tags → Every paid purchase**, choose the tag, check the box, and click **Save purchase rule**. Use **Load all tags** to see the whole catalog. This rule starts disabled and works even when no product in the order has a mapping. Mapped products continue to contribute their own tags and the existing year and store tags. Switching off the rule keeps the selected tag for future use. Previously synced orders and contacts are not retagged.
+
 ## Configure tags
 
 Under **Settings → Purchase Tags**, enter a store tag such as **Store - Example** and an annual tag pattern such as **Buyers {year}**. Leave either field blank to omit that tag. Existing saved patterns using `{ano}` are also supported.
 
-In the classic product editor, open **Product data → General → Mautic tags**. Enter one or more comma-separated names, such as **Product - Photography Course, Interest - Photography**, and update the product. Variations inherit the parent product’s tags. Orders containing only unmapped products are skipped.
+In the classic product editor, open **Product data → General → Mautic tags**. Enter one or more comma-separated names, such as **Product - Photography Course, Interest - Photography**, and update the product. Variations inherit the parent product’s tags. Orders containing only unmapped products are skipped unless the every-purchase rule is enabled.
 
 ## Try a purchase in staging
 
