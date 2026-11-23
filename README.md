@@ -1,6 +1,17 @@
 # Purchase Tags for WooCommerce and Mautic
 
-Assign Mautic tags to individual WooCommerce products. When a customer pays for an order containing a mapped product, the plugin adds the product tags, the store tag, and a payment-year tag to their Mautic contact. Customers can accumulate tags across stores that share a Mautic instance.
+Connect WooCommerce directly to the Mautic REST API to tag customers after payment. The plugin matches the billing email to a Mautic contact, creates a contact when needed, and adds purchase tags alongside existing tags. Multiple stores can use the same Mautic instance. No n8n workflow is required.
+
+## Which tags does a buyer receive?
+
+| Paid order | Every-purchase rule off | Every-purchase rule on |
+| --- | --- | --- |
+| Contains a mapped product | Product tags plus the configured store and payment-year tags | The same tags plus the selected every-purchase tag |
+| Contains only unmapped products | Skip the order | Apply only the selected every-purchase tag |
+
+For example, a buyer who pays for a mapped photography course in 2026 can receive **Photography Course**, **Online Academy**, **Buyers 2026**, and **Paying Customer**. A buyer purchasing an unmapped workbook receives only **Paying Customer** when the every-purchase rule is on. The plugin combines tags from all mapped items and sends each distinct tag once. Product, store, and year tags require a recorded payment date.
+
+In WordPress, use **Settings → Purchase Tags** to browse products and Mautic tags side by side. Search either list, move between pages, or use **Load all products** and **Load all tags**. Select a product to review its tags, link or unlink a tag, or create a tag in Mautic. Paid orders sync in the background, with order notes and retry controls for troubleshooting.
 
 ## Installation
 
