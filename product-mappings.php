@@ -11,14 +11,44 @@ function mapping_tag($value) {
     return trim($value);
 }
 
-function catalog_tags($search, $page) {
+function catalog_batch($start, $limit) {
     $response = api('tags?' . http_build_query([
-        'search' => $search, 'start' => ($page - 1) * 20, 'limit' => 20, 'orderBy' => 'id', 'orderByDir' => 'ASC',
+        'start' => $start, 'limit' => $limit, 'orderBy' => 'id', 'orderByDir' => 'ASC',
     ], '', '&', PHP_QUERY_RFC3986));
     if (!isset($response['tags'], $response['total']) || !is_array($response['tags'])) {
         throw new \RuntimeException('Unexpected tag list from Mautic.');
     }
     return $response;
+}
+
+function catalog_tags($search, $page) {
+    $offset = (max(1, $page) - 1) * 20;
+    if ($search === '') {
+        return catalog_batch($offset, 20);
+    }
+    // Some Mautic installations ignore the search parameter on the tags endpoint.
+    $start = 0;
+    $last_id = 0;
+    $total_matches = 0;
+    $matches = [];
+    do {
+        $batch = catalog_batch($start, 100);
+        foreach ($batch['tags'] as $tag) {
+            $id = (int) ($tag['id'] ?? 0);
+            if ($id <= $last_id || !isset($tag['tag'])) {
+                throw new \RuntimeException('Mautic returned an inconsistent tag catalog. Please retry.');
+            }
+            $last_id = $id;
+            if (stripos($tag['tag'], $search) !== false) {
+                if ($total_matches >= $offset && count($matches) < 20) {
+                    $matches[$id] = $tag;
+                }
+                ++$total_matches;
+            }
+        }
+        $start += count($batch['tags']);
+    } while ($batch['tags'] && $start < (int) $batch['total']);
+    return ['tags' => $matches, 'total' => $total_matches];
 }
 
 function mapping_url($changes = []) {
