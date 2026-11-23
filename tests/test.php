@@ -111,3 +111,14 @@ $responses = [
 ];
 $list = PurchaseTags\catalog_tags('course', 1);
 check($list['total'] === 1 && array_keys($list['tags']) === [2], 'search across unfiltered API pages');
+
+$entries = [];
+for ($i = 1; $i <= 24; ++$i) {
+    $entries[$i] = ['id' => $i, 'tag' => 'Fixture ' . $i];
+}
+$responses = [
+    [200, ['total' => 24, 'tags' => array_slice($entries, 0, 20, true)]],
+    [200, ['total' => 24, 'tags' => array_slice($entries, 20, null, true)]],
+];
+$list = PurchaseTags\catalog_tags('previous search', 2, true);
+check($list['tags'] === $entries && $list['total'] === 24, 'load all tags across API pages, ignoring active search and page');
