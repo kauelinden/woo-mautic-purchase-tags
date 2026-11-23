@@ -73,7 +73,21 @@ function mapping_action() {
     $action = sanitize_key($_POST['wcmt_mapping_action']);
     $next = [];
     try {
-        if ($action === 'create') {
+        if ($action === 'every_purchase') {
+            $rule = get_option('wcmt_every_purchase', []);
+            $enabled = isset($_POST['every_purchase_enabled']);
+            $tag_id = absint($_POST['every_purchase_tag_id'] ?? 0);
+            $name = $rule['tag'] ?? '';
+            if ($tag_id) {
+                $tag = api('tags/' . $tag_id);
+                $name = mapping_tag($tag['tag']['tag'] ?? '');
+            }
+            if ($enabled && $name === '') {
+                throw new \RuntimeException('Choose a Mautic tag before enabling this rule.');
+            }
+            update_option('wcmt_every_purchase', ['enabled' => $enabled, 'tag' => $name], false);
+            $message = 'Every-purchase rule saved.';
+        } elseif ($action === 'create') {
             $name = mapping_tag(wp_unslash($_POST['tag_name'] ?? ''));
             $created = api('tags/new', 'POST', ['tag' => $name]);
             if (empty($created['tag']['id'])) {
@@ -202,7 +216,22 @@ function mapping_panel() {
     <details><summary>Create a new tag</summary><form method="post" class="wcmt-search">
     <?php wp_nonce_field('wcmt_mapping'); ?><input name="tag_name" aria-label="New tag name" placeholder="New tag name" required>
     <button class="button" name="wcmt_mapping_action" value="create">Create tag</button></form></details>
-    </section></div><section class="wcmt-card wcmt-map"><h2>Product mapping</h2>
+    </section></div>
+    <?php $rule = get_option('wcmt_every_purchase', []); ?>
+    <section class="wcmt-card wcmt-map"><h2>Every paid purchase</h2>
+    <form method="post"><?php wp_nonce_field('wcmt_mapping'); ?>
+    <p><label><input type="checkbox" name="every_purchase_enabled" value="1" <?php checked(!empty($rule['enabled'])); ?>> Add a tag to every paid order, including orders without mapped products</label></p>
+    <p><label>Mautic tag <select name="every_purchase_tag_id">
+      <option value="0"><?php echo esc_html(($rule['tag'] ?? '') !== '' ? $rule['tag'] : 'Choose a tag'); ?></option>
+      <?php foreach (($catalog['tags'] ?? []) as $choice) :
+          if (empty($choice['id']) || ($choice['tag'] ?? '') === '' || $choice['tag'] === ($rule['tag'] ?? '')) { continue; } ?>
+          <option value="<?php echo esc_attr($choice['id']); ?>"><?php echo esc_html($choice['tag']); ?></option>
+      <?php endforeach; ?>
+    </select></label></p>
+    <p>Use the tag search or Load all tags above to change the available choices.</p>
+    <button class="button button-primary" name="wcmt_mapping_action" value="every_purchase">Save purchase rule</button>
+    </form></section>
+    <section class="wcmt-card wcmt-map"><h2>Product mapping</h2>
     <?php if ($product) :
         echo '<strong>' . esc_html($product->get_name() . ' · #' . $id) . '</strong>';
         $tags = clean_tags(explode(',', (string) get_post_meta($id, PRODUCT_KEY, true))); ?>
