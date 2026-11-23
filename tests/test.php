@@ -10,7 +10,7 @@ function wp_salt($scheme) { return 'unit-test-only'; }
 function wp_http_validate_url($url) { return filter_var($url, FILTER_VALIDATE_URL); }
 function update_option($key, $value, $autoload) { $GLOBALS['saved'][$key] = $value; }
 function get_option($key, $default) {
-    if ($key === 'wcmt_connection') { return $GLOBALS['saved'][$key] ?? $default; }
+    if (in_array($key, ['wcmt_connection', 'wcmt_every_purchase'], true)) { return $GLOBALS['saved'][$key] ?? $default; }
     return $key === 'wcmt_store' ? 'Store A' : ($GLOBALS['annual_pattern'] ?? $default); }
 function wp_timezone() { return new DateTimeZone('America/Sao_Paulo'); }
 function wp_date($format, $ts, $tz) { return (new DateTimeImmutable('@' . $ts))->setTimezone($tz)->format($format); }
@@ -122,3 +122,24 @@ $responses = [
 ];
 $list = PurchaseTags\catalog_tags('previous search', 2, true);
 check($list['tags'] === $entries && $list['total'] === 24, 'load all tags across API pages, ignoring active search and page');
+
+$sample = clone $order;
+$sample->meta = [];
+$sample->mapped = false;
+$saved['wcmt_every_purchase'] = ['enabled' => true, 'tag' => 'All buyers'];
+check(PurchaseTags\purchase_tags($sample) === ['All buyers'], 'unmapped order receives only the global tag');
+$sample->mapped = true;
+check(PurchaseTags\purchase_tags($sample) === ['Course', 'All buyers', 'Buyers 2026', 'Store A'], 'global and product tags combine');
+$saved['wcmt_every_purchase']['tag'] = 'Course';
+check(PurchaseTags\purchase_tags($sample) === $tags, 'global tag shared with product appears once');
+$sample->mapped = false;
+$order = $sample;
+$order->paid = false;
+$queued_before = count($queue);
+PurchaseTags\enqueue_order(12);
+check(count($queue) === $queued_before, 'unpaid order with global rule enabled is skipped');
+$order->paid = true;
+PurchaseTags\enqueue_order(12);
+check(count($queue) === $queued_before + 1 && $order->get_meta(PurchaseTags\SNAPSHOT) === ['Course'], 'global-only order queued');
+$saved['wcmt_every_purchase']['enabled'] = false;
+check(PurchaseTags\purchase_tags($order) === [], 'disabled global rule ignores unmapped orders');
