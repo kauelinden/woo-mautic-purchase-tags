@@ -6,7 +6,9 @@ Assign Mautic tags to individual WooCommerce products. When a customer pays for 
 
 1. Activate WooCommerce on a site running WordPress 5.3 or later and PHP 7.4 or later. Download the ZIP from **Code → Download ZIP** in this repository. In WordPress, select **Plugins → Add Plugin → Upload Plugin**, upload the ZIP, and activate the plugin.
 2. Enable the REST API and HTTP Basic authentication in Mautic. Use a dedicated account with permission to view, create, and edit contacts. Configure email as a unique contact identifier, particularly if multiple stores share the instance.
-3. Set the following environment variables on the server, then add these definitions to wp-config.php before the final configuration line. WCMT_URL is the HTTPS URL of the Mautic installation, without the /api suffix. Each store can use its own credentials.
+3. In **Settings → Purchase Tags**, enter the HTTPS base URL, API username and password. Click **Save connection**, then **Test saved connection**. The test reads contacts. The administrator form requires PHP Sodium and stores the password encrypted with a key derived from the WordPress authentication salt. Re-enter the password if that salt changes.
+
+Alternatively, use the server-managed configuration. If any WCMT constant is defined, the plugin uses the constants as a set. Set the following environment variables on the server, then add these definitions to wp-config.php before the final configuration line. WCMT_URL is the HTTPS URL of the Mautic installation, without the /api suffix. Each store can use its own credentials.
 
 ```php
 define('WCMT_URL', getenv('WCMT_URL') ?: '');
