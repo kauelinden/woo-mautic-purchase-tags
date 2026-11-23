@@ -102,5 +102,12 @@ foreach (['-Remove', 'First,Second', ''] as $invalid) {
     catch (RuntimeException $e) { check(true, 'invalid mapping name rejected'); }
 }
 $responses = [[200, ['total'=>21, 'tags'=>[25=>['id'=>25,'tag'=>'Course']]]]];
-$list = PurchaseTags\catalog_tags('Course', 2);
+$list = PurchaseTags\catalog_tags('', 2);
 check($list['tags'][25]['tag'] === 'Course' && strpos(end($calls)[0], 'start=20') !== false, 'tag catalog pages');
+
+$responses = [
+    [200, ['total'=>2, 'tags'=>[1=>['id'=>1, 'tag'=>'Unrelated']]]],
+    [200, ['total'=>2, 'tags'=>[2=>['id'=>2, 'tag'=>'Photography Course']]]],
+];
+$list = PurchaseTags\catalog_tags('course', 1);
+check($list['total'] === 1 && array_keys($list['tags']) === [2], 'search across unfiltered API pages');
