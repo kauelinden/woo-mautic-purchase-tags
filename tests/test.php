@@ -2,14 +2,16 @@
 // Run from the CLI. HTTP responses and orders are test fixtures.
 if (PHP_SAPI !== 'cli') { exit; }
 define('ABSPATH', __DIR__);
-define('WCMT_URL', 'https://example.invalid');
-define('WCMT_USER', 'fixture');
-define('WCMT_PASSWORD', 'fixture');
 function add_action(...$args) {}
 function add_filter(...$args) {}
 function sanitize_text_field($v) { return strip_tags($v); }
 function get_post_meta($id, $key, $single) { return $id === 1 ? 'Course, Course, -remove' : ''; }
-function get_option($key, $default) { return $key === 'wcmt_store' ? 'Store A' : ($GLOBALS['annual_pattern'] ?? $default); }
+function wp_salt($scheme) { return 'unit-test-only'; }
+function wp_http_validate_url($url) { return filter_var($url, FILTER_VALIDATE_URL); }
+function update_option($key, $value, $autoload) { $GLOBALS['saved'][$key] = $value; }
+function get_option($key, $default) {
+    if ($key === 'wcmt_connection') { return $GLOBALS['saved'][$key] ?? $default; }
+    return $key === 'wcmt_store' ? 'Store A' : ($GLOBALS['annual_pattern'] ?? $default); }
 function wp_timezone() { return new DateTimeZone('America/Sao_Paulo'); }
 function wp_date($format, $ts, $tz) { return (new DateTimeImmutable('@' . $ts))->setTimezone($tz)->format($format); }
 function wp_parse_url($url, $part) { return parse_url($url, $part); }
@@ -32,6 +34,20 @@ function check($ok, $message) {
     if (!$ok) { throw new RuntimeException($message); }
     echo "OK $message\n";
 }
+PurchaseTags\save_connection('https://example.invalid', 'fixture', 'test-only');
+check(PurchaseTags\connection_settings()['password'] === 'test-only', 'stored credential round trip');
+check(strpos(serialize($GLOBALS['saved']), 'test-only') === false, 'password absent from stored options');
+PurchaseTags\save_connection('https://example.invalid', 'fixture', '');
+try {
+    PurchaseTags\save_connection('https://other.invalid', 'fixture', '');
+    throw new LogicException('Changed destination should require a password');
+} catch (RuntimeException $expected) {
+    check(PurchaseTags\connection_settings()['url'] === 'https://example.invalid', 'destination cannot reuse saved password');
+}
+define('WCMT_URL', 'https://example.invalid');
+define('WCMT_USER', 'fixture');
+define('WCMT_PASSWORD', 'fixture');
+check(PurchaseTags\connection_settings()['password'] === WCMT_PASSWORD, 'server credentials override saved settings');
 $order = new class {
     public $mapped = true, $paid = true, $meta = [], $notes = [];
     function get_items() { return $this->mapped ? [new class { function get_product_id() { return 1; } }] : []; }
